@@ -1,31 +1,17 @@
-// Posts each form submission to Discord as the BOT (so the Accept/Deny
-// buttons are live). The bot process handles the clicks, role grants and DMs.
-
-// ============================ CONFIG ============================
-// The application-owned webhook URL printed by `node create-webhook.js`.
-const WEBHOOK_URL = 'PASTE_APP_WEBHOOK_URL';
-
-// Roles pinged when an application comes in. Add as many as you want.
+const WEBHOOK_URL = 'https://discord.com/api/v10/webhooks/1516322885420191745/6coNyciHnJxW9uChkh-xVdX2QOcrwK-gNp59VA6VXZkZBRG0QzLHuJT3vEVz9qNNqNT6';
 const PING_ROLE_IDS = ['1516190385943351316'];
-
 const HEADER_IMAGE = 'https://i.postimg.cc/nhQWfWq9/content.png';
 const FOOTER_IMAGE = 'https://i.postimg.cc/NjrnvnRs/New-Project-2.png';
 const TITLE_EMOJI = '<:unknown:1516243511706390719>';
 const ACCEPT_EMOJI_ID = '1516247490788065390';
 const DENY_EMOJI_ID = '1516243541582413974';
-
-// Exact form title -> short key. The key must match a block in the bot's config.js.
 const FORM_KEYS = {
   'CWRPVC | Civilian Staff Application': 'civstaff',
   'CWRPVC | Certified Civilian Application': 'certciv'
 };
-
-// The question whose title contains this word holds the applicant's Discord ID.
 const DISCORD_ID_HINT = 'discord';
-
 const MAX_ANSWER_CHARS = 1000;
 const MAX_QUESTIONS = 14;
-// ===============================================================
 
 function onFormSubmit(e) {
   const formName = e && e.source ? e.source.getTitle() : FormApp.getActiveForm().getTitle();

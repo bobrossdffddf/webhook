@@ -1,34 +1,18 @@
-// All the values you'll edit live here.
-// Prefer environment variables for secrets; the fallbacks are for quick testing.
-
 module.exports = {
-  // Same bot used by the Apps Script. Discord Developer Portal -> Bot -> Token.
   BOT_TOKEN: process.env.BOT_TOKEN || 'PASTE_BOT_TOKEN',
-
-  // Your server (guild) ID. Right-click the server icon -> Copy Server ID (Developer Mode on).
   GUILD_ID: process.env.GUILD_ID || 'PASTE_SERVER_ID',
-
-  // Channel applications post to. Used only by create-webhook.js.
   REVIEW_CHANNEL_ID: process.env.REVIEW_CHANNEL_ID || 'PASTE_REVIEW_CHANNEL_ID',
-
-  // Filled in from `node create-webhook.js`. The bot uses these to edit the card.
   WEBHOOK_ID: process.env.WEBHOOK_ID || 'PASTE_WEBHOOK_ID',
   WEBHOOK_TOKEN: process.env.WEBHOOK_TOKEN || 'PASTE_WEBHOOK_TOKEN',
 
-  // Who is allowed to press Accept/Deny. Empty array = anyone in the channel can.
   REVIEWER_ROLE_IDS: [],
 
-  // Shared visuals.
   HEADER_IMAGE: 'https://i.postimg.cc/nhQWfWq9/content.png',
   FOOTER_IMAGE: 'https://i.postimg.cc/NjrnvnRs/New-Project-2.png',
   RESULTS_EMOJI: '<:unknown:1516181718548217976>',
-
-  // Container accent colors (decimal) for the edited message.
   ACCENT_ACCEPT: 3381593,
   ACCENT_DENY: 16711687,
 
-  // Per-form behavior. The key must match the key Apps Script puts in the button
-  // (FORM_KEYS in Code.gs). Add more forms by copying a block.
   FORMS: {
     civstaff: {
       rolesToGrant: ['1516191557366321163', '1516226139339882577'],
