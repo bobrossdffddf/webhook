@@ -12,7 +12,11 @@ const NO = '<:Wrong:1516243541582413974>';
 const esc = (s) => String(s == null ? '' : s).replace(/`/g, 'ʼ');
 const img = (url) => ({ type: 12, items: [{ media: { url } }] });
 
-client.once(Events.ClientReady, (c) => console.log('Logged in as ' + c.user.tag));
+client.once(Events.ClientReady, (c) => {
+  console.log('Logged in as ' + c.user.tag);
+  poll();
+  setInterval(poll, cfg.POLL_INTERVAL_MS);
+});
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
@@ -25,6 +29,74 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 });
+
+async function poll() {
+  let body;
+  try {
+    const res = await fetch(cfg.APPS_SCRIPT_URL + '?secret=' + encodeURIComponent(cfg.POLL_SECRET));
+    body = await res.json();
+  } catch (e) {
+    return;
+  }
+  for (const item of (body.items || [])) {
+    try {
+      await postCard(item.data);
+      await fetch(cfg.APPS_SCRIPT_URL + '?secret=' + encodeURIComponent(cfg.POLL_SECRET) + '&ack=' + encodeURIComponent(item.id));
+    } catch (e) {
+      console.error('post failed, retrying next cycle:', e && e.message);
+    }
+  }
+}
+
+function buildCard(data) {
+  const container = {
+    type: 17,
+    components: [
+      img(cfg.HEADER_IMAGE),
+      { type: 10, content: '# ' + cfg.TITLE_EMOJI + ' Application Submitted\nA new application has been submitted.' },
+      { type: 14, spacing: 2 },
+      { type: 10, content: '## Form: `' + esc(data.formName) + '`' }
+    ]
+  };
+  (data.answers || []).slice(0, 16).forEach((qa, i) => {
+    container.components.push({ type: 14, spacing: 2 });
+    container.components.push({ type: 10, content: '### Q' + (i + 1) + ': ' + esc(qa.q) + '\n' + answer(qa.a) });
+  });
+  container.components.push({ type: 14, spacing: 2 });
+  container.components.push(img(cfg.FOOTER_IMAGE));
+
+  const ping = cfg.PING_ROLE_IDS.map((id) => '<@&' + id + '>').join(' ');
+  const buttons = {
+    type: 1,
+    components: [
+      { type: 2, style: 3, label: 'Accept', emoji: { id: cfg.ACCEPT_EMOJI_ID, name: 'unknown' }, custom_id: 'acc|' + (data.key || '') + '|' + (data.applicantId || '0') },
+      { type: 2, style: 4, label: 'Deny', emoji: { id: cfg.DENY_EMOJI_ID, name: 'unknown' }, custom_id: 'den|' + (data.key || '') + '|' + (data.applicantId || '0') }
+    ]
+  };
+  return {
+    flags: 32768,
+    components: [{ type: 10, content: ping }, container, buttons],
+    allowed_mentions: { parse: [], roles: cfg.PING_ROLE_IDS }
+  };
+}
+
+function answer(value) {
+  if (Array.isArray(value)) value = value.map((v) => (Array.isArray(v) ? v.join(' / ') : v)).join(', ');
+  let t = value === null || value === undefined || value === '' ? 'No answer' : String(value);
+  if (t.length > 1000) t = t.substring(0, 997) + '...';
+  if (t.indexOf('\n') !== -1) return '```\n' + t.replace(/```/g, 'ʼʼʼ') + '\n```';
+  return '`' + t.replace(/`/g, 'ʼ') + '`';
+}
+
+async function postCard(data) {
+  const url = 'https://discord.com/api/v10/webhooks/' + cfg.WEBHOOK_ID + '/' + cfg.WEBHOOK_TOKEN + '?with_components=true';
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildCard(data))
+  });
+  if (!res.ok) throw new Error('webhook ' + res.status + ' ' + (await res.text()));
+}
 
 function reviewerAllowed(interaction) {
   if (!cfg.REVIEWER_ROLE_IDS.length) return true;

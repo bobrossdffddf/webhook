@@ -1,24 +1,28 @@
-const WEBHOOK_URL = 'https://discord.com/api/v10/webhooks/1516322885420191745/6coNyciHnJxW9uChkh-xVdX2QOcrwK-gNp59VA6VXZkZBRG0QzLHuJT3vEVz9qNNqNT6';
-const PING_ROLE_IDS = ['1516190385943351316'];
-const HEADER_IMAGE = 'https://i.postimg.cc/nhQWfWq9/content.png';
-const FOOTER_IMAGE = 'https://i.postimg.cc/NjrnvnRs/New-Project-2.png';
-const TITLE_EMOJI = '<:unknown:1516243511706390719>';
-const ACCEPT_EMOJI_ID = '1516247490788065390';
-const DENY_EMOJI_ID = '1516243541582413974';
+const POLL_SECRET = 'change-this-to-a-long-random-string';
+
 const FORM_KEYS = {
   'CWRPVC | Civilian Staff Application': 'civstaff',
   'CWRPVC | Certified Civilian Application': 'certciv'
 };
 const DISCORD_ID_HINT = 'discord';
-const MAX_ANSWER_CHARS = 1000;
-const MAX_QUESTIONS = 14;
 
 function onFormSubmit(e) {
   const formName = e && e.source ? e.source.getTitle() : FormApp.getActiveForm().getTitle();
   const responses = e && e.response ? e.response.getItemResponses() : [];
-  const key = FORM_KEYS[formName] || '';
-  const applicantId = findDiscordId(responses) || '0';
-  postMessage(buildPayload(formName, key, applicantId, responses));
+  const sub = {
+    formName: formName,
+    key: FORM_KEYS[formName] || '',
+    applicantId: findDiscordId(responses) || '0',
+    answers: responses.map(function (r) { return { q: r.getItem().getTitle(), a: r.getResponse() }; })
+  };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    PropertiesService.getScriptProperties()
+      .setProperty('q_' + Date.now() + '_' + Math.floor(Math.random() * 1e6), JSON.stringify(sub));
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function findDiscordId(responses) {
@@ -31,68 +35,25 @@ function findDiscordId(responses) {
   return '';
 }
 
-function buildPayload(formName, key, applicantId, responses) {
-  const container = {
-    type: 17,
-    components: [
-      { type: 12, items: [{ media: { url: HEADER_IMAGE } }] },
-      { type: 10, content: '# ' + TITLE_EMOJI + ' Application Submitted\nA new application has been submitted.' },
-      { type: 14, spacing: 2 },
-      { type: 10, content: '## Form: `' + escapeTicks(formName) + '`' }
-    ]
-  };
-
-  const count = Math.min(responses.length, MAX_QUESTIONS);
-  for (let i = 0; i < count; i++) {
-    const q = escapeTicks(responses[i].getItem().getTitle());
-    const a = formatAnswer(responses[i].getResponse());
-    container.components.push({ type: 14, spacing: 2 });
-    container.components.push({ type: 10, content: '### Q' + (i + 1) + ': ' + q + '\n' + a });
+function doGet(e) {
+  if (!e || e.parameter.secret !== POLL_SECRET) return out({ error: 'unauthorized' });
+  const props = PropertiesService.getScriptProperties();
+  if (e.parameter.ack) {
+    props.deleteProperty(e.parameter.ack);
+    return out({ ok: true });
   }
-  container.components.push({ type: 14, spacing: 2 });
-  container.components.push({ type: 12, items: [{ media: { url: FOOTER_IMAGE } }] });
-
-  const ping = PING_ROLE_IDS.map(function (id) { return '<@&' + id + '>'; }).join(' ');
-
-  const buttons = {
-    type: 1,
-    components: [
-      { type: 2, style: 3, label: 'Accept', emoji: { id: ACCEPT_EMOJI_ID, name: 'unknown' }, custom_id: 'acc|' + key + '|' + applicantId },
-      { type: 2, style: 4, label: 'Deny', emoji: { id: DENY_EMOJI_ID, name: 'unknown' }, custom_id: 'den|' + key + '|' + applicantId }
-    ]
-  };
-
-  return {
-    flags: 32768,
-    components: [{ type: 10, content: ping }, container, buttons],
-    allowed_mentions: { parse: [], roles: PING_ROLE_IDS }
-  };
-}
-
-function formatAnswer(value) {
-  if (Array.isArray(value)) {
-    value = value.map(function (v) { return Array.isArray(v) ? v.join(' / ') : v; }).join(', ');
-  }
-  let text = value === null || value === undefined || value === '' ? 'No answer' : String(value);
-  if (text.length > MAX_ANSWER_CHARS) text = text.substring(0, MAX_ANSWER_CHARS - 3) + '...';
-  if (text.indexOf('\n') !== -1) return '```\n' + text.replace(/```/g, 'ʼʼʼ') + '\n```';
-  return '`' + text.replace(/`/g, 'ʼ') + '`';
-}
-
-function escapeTicks(text) {
-  return String(text == null ? '' : text).replace(/`/g, 'ʼ');
-}
-
-function postMessage(payload) {
-  const url = WEBHOOK_URL + (WEBHOOK_URL.indexOf('?') === -1 ? '?' : '&') + 'with_components=true';
-  const res = UrlFetchApp.fetch(url, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
+  const all = props.getProperties();
+  const items = [];
+  Object.keys(all).forEach(function (k) {
+    if (k.indexOf('q_') === 0) {
+      try { items.push({ id: k, data: JSON.parse(all[k]) }); } catch (err) {}
+    }
   });
-  const code = res.getResponseCode();
-  if (code < 200 || code >= 300) throw new Error('Discord ' + code + ': ' + res.getContentText());
+  return out({ items: items });
+}
+
+function out(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function installTrigger() {
