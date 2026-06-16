@@ -1,86 +1,90 @@
 # Application system — setup
 
-Two pieces work together:
+Two pieces:
 
-- **Apps Script (`Code.gs`)** — runs on form submit, posts the application card to Discord *as the bot* so the Accept/Deny buttons are live.
-- **Bot (`bot/`)** — a small always-on Node app that handles the button clicks: opens the reason modal, grants roles, edits the message, and DMs the applicant.
+- **Apps Script (`Code.gs`)** — runs on form submit and posts the application card to an **application-owned webhook**. No bot token on Google.
+- **Bot (`bot/`)** — a small always-on Node app. It creates that webhook, and handles the button clicks: reason modal, role grants, editing the card, and DMing the applicant.
 
-Both use the **same bot token**.
+Why a webhook the *bot* creates? Google's servers are Cloudflare-blocked from Discord's bot API (error 40333), but webhooks go through fine. Because the bot owns the webhook, its buttons still route back to the bot over the gateway.
 
 ---
 
 ## 1. Create the Discord application + bot
 
-1. Go to https://discord.com/developers/applications → **New Application**.
-2. Left sidebar → **Bot** → **Reset Token** → copy it. This is `BOT_TOKEN`.
-3. Still on the Bot page, no privileged intents are required — leave them off.
-4. Left sidebar → **General Information** → copy the **Application ID** (used only for the invite link below).
+1. https://discord.com/developers/applications -> **New Application**.
+2. **Bot** -> **Reset Token** -> copy it. This is `BOT_TOKEN`. No privileged intents needed.
+3. **General Information** -> copy the **Application ID** (for the invite link).
+4. **IMPORTANT:** leave the **Interactions Endpoint URL** field **blank**. If it's set, button clicks go to HTTP instead of your gateway bot and nothing will work.
 
-## 2. Invite the bot with the right permissions
+## 2. Invite the bot + fix role order
 
-Use this URL, replacing `APPLICATION_ID`:
+Invite (replace `APPLICATION_ID`):
 
 ```
-https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot&permissions=268520448
+https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot&permissions=536872960
 ```
 
-That permission set = **Manage Roles + View Channel + Send Messages + Embed Links + Read Message History**.
+That's **Manage Roles + View Channel + Send Messages + Manage Webhooks**.
 
-**Critical:** in **Server Settings → Roles**, drag the bot's own role **above** every role it will hand out (the four role IDs in `config.js`). Discord refuses to grant a role that sits above the bot.
+In **Server Settings -> Roles**, drag the **bot's role above** the four roles it grants. Discord won't let it assign a role sitting above its own.
 
-## 3. Configure and run the bot
+## 3. Configure the bot + create the webhook
 
-In `bot/config.js` set:
-
-- `BOT_TOKEN` and `GUILD_ID` (your server ID).
-- `REVIEWER_ROLE_IDS` — leave `[]` so anyone can review, or list role IDs that are allowed to press Accept/Deny.
-- Confirm the `FORMS` blocks (roles + result text) are correct.
-
-Then on your host:
+In `bot/config.js` set `BOT_TOKEN`, `GUILD_ID`, and `REVIEW_CHANNEL_ID` (the channel applications post to). Then:
 
 ```
 cd bot
 npm install
+node create-webhook.js
+```
+
+It prints three values. Put them where it says:
+
+- `WEBHOOK_ID` and `WEBHOOK_TOKEN` -> into `bot/config.js`
+- `WEBHOOK_URL` -> into `Code.gs`
+
+Also confirm the `FORMS` blocks (roles + result text) and, if you want to gate who can review, `REVIEWER_ROLE_IDS`.
+
+## 4. Run the bot
+
+```
 node index.js          # or: pm2 start index.js --name applications
 ```
 
-You should see `Logged in as ...`. Keep it running 24/7 (pm2, a systemd service, or your panel's "always on" setting). If the bot is offline when someone clicks, Discord shows "interaction failed".
+You should see `Logged in as ...`. Keep it running 24/7 (pm2 / systemd / your panel's always-on). If it's offline when someone clicks, Discord shows "interaction failed".
 
-Tip: instead of putting secrets in `config.js`, set `BOT_TOKEN` and `GUILD_ID` as environment variables — the config reads those first.
+## 5. Wire up the Apps Script
 
-## 4. Wire up the Apps Script
+For **each** form: open it -> **â‹® -> Apps Script**, paste `Code.gs`, then set:
 
-For **each** form: open it → **⋮ → Apps Script**, paste `Code.gs`, then set:
-
-- `BOT_TOKEN` — same token.
-- `CHANNEL_ID` — the channel applications should post to.
+- `WEBHOOK_URL` — the URL from step 3.
 - `PING_ROLE_IDS` — one or more roles to ping, e.g. `['111','222']`.
-- `FORM_KEYS` — make sure this form's exact title maps to the right key (`civstaff` / `certciv`).
+- `FORM_KEYS` — map this form's exact title to the right key (`civstaff` / `certciv`).
 
-Run **installTrigger** once and approve permissions. Submit a test response to confirm the card posts with working buttons.
+Run **installTrigger** once, approve, then submit a test response. The card should post with working buttons.
 
 ---
 
 ## How it flows
 
-1. Someone submits the form → Apps Script posts the card (pings, answers, two images, Accept/Deny).
-2. A reviewer clicks **Accept** or **Deny** → a modal asks for a reason.
+1. Form submitted -> Apps Script posts the card (pings, answers, two images, Accept/Deny).
+2. A reviewer clicks **Accept** or **Deny** -> a modal asks for a reason.
 3. On submit the bot:
-   - **Accept** → grants that form's two roles to the applicant, edits the card (green, buttons greyed out + disabled, "Accepted by + reason"), and DMs the acceptance message.
-   - **Deny** → edits the card (red, disabled, "Denied by + reason") and DMs the denial message with the reason.
+   - **Accept** -> grants that form's two roles to the applicant, edits the card (green, buttons greyed + disabled, "Accepted by + reason"), DMs the acceptance message.
+   - **Deny** -> edits the card (red, disabled, "Denied by + reason"), DMs the denial with the reason.
 
-The applicant is identified by the form question whose title contains **"discord"** (configurable via `DISCORD_ID_HINT`). It must contain their numeric Discord ID.
+The applicant is identified by the form question whose title contains **"discord"** (set by `DISCORD_ID_HINT`). It must hold their numeric Discord ID.
 
 ## Adding another form later
 
-1. In `Code.gs` `FORM_KEYS`, add `'<exact form title>': '<newkey>'`.
-2. In `bot/config.js` `FORMS`, add a `<newkey>` block with its `rolesToGrant`, `acceptText`, `denyText`.
-3. Paste `Code.gs` into that form and run `installTrigger`. Restart the bot.
+1. `Code.gs` `FORM_KEYS`: add `'<exact form title>': '<newkey>'`.
+2. `bot/config.js` `FORMS`: add a `<newkey>` block with `rolesToGrant`, `acceptText`, `denyText`.
+3. Paste `Code.gs` into that form, run `installTrigger`, restart the bot.
 
 ## Notes & limits
 
 - Custom emojis and roles only resolve inside the server that owns them.
-- A reviewer with no valid Discord ID on the application: the card is still marked, but no roles/DM (you'll get an ephemeral warning).
-- DMs fail silently if the applicant has DMs closed — the bot tells the reviewer so.
-- The per-question "highlight the chosen option" styling from your mockup (Q6) isn't auto-generated; every answer is shown generically. That kind of formatting would need custom per-question code.
-- Keep `BOT_TOKEN` private. Anyone with it controls the bot.
+- No valid Discord ID on an application -> the card is still marked, but no roles/DM (you get an ephemeral warning).
+- DMs fail quietly if the applicant has DMs closed — the bot tells the reviewer.
+- The per-question "highlight the chosen option" styling from your mockup (Q6) isn't auto-generated; answers render generically.
+- Keep `BOT_TOKEN` and the webhook token private.

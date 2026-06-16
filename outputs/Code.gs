@@ -2,8 +2,8 @@
 // buttons are live). The bot process handles the clicks, role grants and DMs.
 
 // ============================ CONFIG ============================
-const BOT_TOKEN = 'PASTE_BOT_TOKEN';              // same bot as the Node app
-const CHANNEL_ID = 'PASTE_REVIEW_CHANNEL_ID';     // channel applications post to
+// The application-owned webhook URL printed by `node create-webhook.js`.
+const WEBHOOK_URL = 'PASTE_APP_WEBHOOK_URL';
 
 // Roles pinged when an application comes in. Add as many as you want.
 const PING_ROLE_IDS = ['1516190385943351316'];
@@ -98,11 +98,10 @@ function escapeTicks(text) {
 }
 
 function postMessage(payload) {
-  const url = 'https://discord.com/api/v10/channels/' + CHANNEL_ID + '/messages';
+  const url = WEBHOOK_URL + (WEBHOOK_URL.indexOf('?') === -1 ? '?' : '&') + 'with_components=true';
   const res = UrlFetchApp.fetch(url, {
     method: 'post',
     contentType: 'application/json',
-    headers: { Authorization: 'Bot ' + BOT_TOKEN },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   });

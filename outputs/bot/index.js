@@ -66,7 +66,6 @@ async function onModal(interaction) {
   await interaction.deferReply(EPHEMERAL);
 
   const rest = client.rest;
-  const channelId = interaction.channelId;
   const modId = interaction.user.id;
   const reason = (interaction.fields.getTextInputValue('reason') || '').trim() || 'No reason provided';
   const form = cfg.FORMS[key];
@@ -74,7 +73,7 @@ async function onModal(interaction) {
 
   let original;
   try {
-    original = await rest.get(Routes.channelMessage(channelId, messageId));
+    original = await rest.get(Routes.webhookMessage(cfg.WEBHOOK_ID, cfg.WEBHOOK_TOKEN, messageId));
   } catch (e) {
     return interaction.editReply('Could not load the original message (was it deleted?).');
   }
@@ -88,7 +87,7 @@ async function onModal(interaction) {
   const footer = action === 'acc'
     ? '-# Accepted by: <@' + modId + '>\n## `' + esc(reason) + '`'
     : '-# Denied by: <@' + modId + '>\n## `' + esc(reason) + '`';
-  await editMessage(rest, channelId, messageId, accent, footer);
+  await editMessage(rest, messageId, accent, footer);
 
   const notes = [];
   if (!form) notes.push('⚠️ Unknown form key — could not map roles or result text.');
@@ -130,8 +129,9 @@ function stripIds(components) {
   }
 }
 
-async function editMessage(rest, channelId, messageId, accent, footerLine) {
-  const msg = await rest.get(Routes.channelMessage(channelId, messageId));
+async function editMessage(rest, messageId, accent, footerLine) {
+  const route = Routes.webhookMessage(cfg.WEBHOOK_ID, cfg.WEBHOOK_TOKEN, messageId);
+  const msg = await rest.get(route);
   const container = msg.components.find((c) => c.type === 17);
   const row = msg.components.find((c) => c.type === 1);
 
@@ -145,8 +145,9 @@ async function editMessage(rest, channelId, messageId, accent, footerLine) {
   const out = [container, row].filter(Boolean); // drops the role-ping line
   stripIds(out);
 
-  await rest.patch(Routes.channelMessage(channelId, messageId), {
-    body: { flags: 32768, components: out }
+  await rest.patch(route, {
+    body: { flags: 32768, components: out },
+    query: new URLSearchParams({ with_components: 'true' })
   });
 }
 
